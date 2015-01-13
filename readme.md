@@ -30,3 +30,8 @@ From a rest client, GET http://localhost:3000/api/v1/people and pass a header
 parameter with the key url and a url value.  This url will now be registered to
 receive data when it is inserted into the people collection. If you do not pass
 the url key/value pair, the API will respond with current people data.
+
+# TODO
+
+Authentication
+More options and flexibility
