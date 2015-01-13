@@ -1,9 +1,46 @@
-var Hooks, collections, generate, init;
+var collections = {};
+var hooks = new Mongo.Collection("hooks");
 
-collections = {};
-Hooks = new Mongo.Collection("Hooks");
+var methodDataToObject = function (data) {
+  var obj = {};
 
-init = function(collection) {
+  data.toString().split("&").forEach(function (n) {
+    var keyValue = n.split("=");
+    var key = keyValue[0];
+    var value = keyValue[1];
+    obj[key] = decodeURIComponent(value);
+  });
+
+  return obj;
+};
+
+var generateError = function (message) {
+  this.setStatusCode(400);
+  return JSON.stringify({
+    success: false,
+    error: true,
+    message: message
+  });
+};
+
+var handleAction = function (doc, action, collectionName) {
+  hooks.find({
+    collection: collectionName
+  }).forEach(function(hook) {
+    HTTP.post(hook.url, {
+      data: {
+        doc: doc,
+        info: {
+          action: action,
+          collection: collectionName,
+          hookId: hook._id
+        }
+      }
+    });
+  });
+};
+
+var init = function (collection) {
   var name;
   name = collection._name;
 
@@ -14,70 +51,72 @@ init = function(collection) {
   collections[name] = collection;
 
   collection.after.insert(function(userId, doc) {
-    Hooks.find({
-      collection: name,
-      action: "insert"
-    }).forEach(function(hook) {
-      HTTP.post(hook.url, {
-        data: {
-          doc: doc,
-          info: {
-            action: "insert",
-            collection: name
-          }
-        }
-      });
-    });
+    handleAction(doc, "create", name);
+  });
+
+  collection.after.remove(function(userId, doc) {
+    handleAction(doc, "delete", name);
   });
 
   collection.after.update(function(userId, doc) {
-    Hooks.find({
-      collection: name,
-      action: "update"
-    }).forEach(function(hook) {
-      HTTP.post(hook.url, {
-        data: {
-          doc: doc,
-          info: {
-            action: "update",
-            collection: name
-          }
-        }
-      });
-    });
+    handleAction(doc, "update", name);
   });
 };
 
-generate = function(options) {
+var generate = function (options) {
   var collection, method;
   method = {};
-  collection = collections[options.collection];
 
-  if (!collection) {
-    throw new Meteor.Error("uninitialized", "Call WebHook.init and pass " +
-      options.collection);
-  }
+  method[options.route] = {
+    get: function () {
+      this.setContentType("application/JSON");
+      return JSON.stringify(hooks.find().fetch());
+    },
+    delete: function (data) {
+      this.setContentType("application/JSON");
+      data = methodDataToObject(data);
 
-  method[options.route] = function() {
-    var id, url;
-    this.setContentType("application/JSON");
-    url = this.requestHeaders.url;
+      if(!data._id) {
+        return generateError.call(this, "No _id was specified");
+      }
 
-    if (url) {
-      id = Hooks.insert({
-        url: url,
-        collection: collection._name,
-        action: options.action
+      return JSON.stringify({
+        success: hooks.remove(data._id) === 1
+      });
+    },
+    post: function (data) {
+      this.setContentType("application/JSON");
+      data = methodDataToObject(data);
+
+      if(!data.url) {
+        return generateError.call(this, "No url was specified");
+      }
+
+      if(!data.collection) {
+        return generateError.call(this, "No collection was specified");
+      }
+
+      if(!collections[data.collection]) {
+        return generateError.call(this,
+          data.collection + " is not initialized for webhooking");
+      }
+
+      var duplicate = hooks.findOne({
+        collection: data.collection,
+        url: data.url
       });
 
-      return JSON.stringify(Hooks.findOne(id));
-    }
+      if(duplicate) {
+        return JSON.stringify(duplicate);
+      }
 
-    if (this.params.id) {
-      return JSON.stringify(collection.findOne(this.params.id));
-    }
+      var id = hooks.insert({
+        collection: data.collection,
+        url: data.url
+      });
 
-    return JSON.stringify(collection.find().fetch());
+      return JSON.stringify(hooks.findOne(id));
+    }
   };
 
   HTTP.methods(method);
