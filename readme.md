@@ -33,5 +33,8 @@ the url key/value pair, the API will respond with current people data.
 
 # TODO
 
-Authentication
-More options and flexibility
+* Authentication
+* Register with payload rather than header (POST instead of GET?)
+* Allow custom publishing, so it's possible for everyone to not see all data
+* Register for delete notifications
+* Delete registration
