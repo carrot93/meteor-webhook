@@ -31,7 +31,7 @@ var generateError = function (message) {
   });
 };
 
-var handleAction = function (doc, action, collectionName) {
+var handleAction = function (doc, action, collectionName, allowFunction) {
   query = {
     collection: collectionName
   };
@@ -39,6 +39,10 @@ var handleAction = function (doc, action, collectionName) {
   query[action] = true;
 
   hooks.find(query).forEach(function(hook) {
+    if(allowFunction && !allowFunction(doc)) {
+      return;
+    }
+
     HTTP.post(hook.url, {
       data: {
         doc: doc,
@@ -64,32 +68,37 @@ var handleAction = function (doc, action, collectionName) {
   });
 };
 
-var init = function (collection) {
+var init = function (collection, options) {
   var name;
   name = collection._name;
 
   if (collections[name]) {
-    return;
+    throw new Meteor.Error("already initialized",
+      name + " is already initialized");
   }
 
   collections[name] = collection;
 
   collection.after.insert(function(userId, doc) {
-    handleAction(doc, "create", name);
+    handleAction(doc, "create", name, options.create);
   });
 
   collection.after.remove(function(userId, doc) {
-    handleAction(doc, "delete", name);
+    handleAction(doc, "delete", name, options.delete);
   });
 
   collection.after.update(function(userId, doc) {
-    handleAction(doc, "update", name);
+    handleAction(doc, "update", name, options.update);
   });
 };
 
 var generate = function (options) {
   var collection, method;
   method = {};
+
+  check(options, {
+    route: String
+  });
 
   method[options.route] = {
     get: function () {
