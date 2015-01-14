@@ -51,6 +51,7 @@ WebHook.init(collection, [options])
 
   *collection*: An instance of a Mongo.Collection that the WebHook will observe
   for data changes
+  
   *options*: An object. Valid properties include create, delete, and update.
   These properties should be set to functions that, given the document, return
   true to allow the document to be published. Returning false will deny the
