@@ -45,7 +45,9 @@ anything besides a 200 response code (such as a 404).
 
 # API
 
-* WebHook.init(collection, [options])
+````javascript
+WebHook.init(collection, [options])
+````
 
   *collection*: An instance of a Mongo.Collection that the WebHook will observe
   for data changes
@@ -56,7 +58,9 @@ anything besides a 200 response code (such as a 404).
   document from actually being modified, just the modification being published
   to WebHook subscribers.
 
-*WebHook.generate(options)
+````javascript
+WebHook.generate(options)
+````
 
   *options*: An object. Currently the only valid option is a string value for
   route. The route is the URL where subscribers can manage their WebHook
