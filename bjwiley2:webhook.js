@@ -1,8 +1,16 @@
+if(Meteor.isClient) {
+  return;
+}
+
 var collections = {};
 var hooks = new Mongo.Collection("hooks");
 
 var methodDataToObject = function (data) {
   var obj = {};
+
+  if(!data) {
+    return obj;
+  }
 
   data.toString().split("&").forEach(function (n) {
     var keyValue = n.split("=");
@@ -24,9 +32,13 @@ var generateError = function (message) {
 };
 
 var handleAction = function (doc, action, collectionName) {
-  hooks.find({
+  query = {
     collection: collectionName
-  }).forEach(function(hook) {
+  };
+
+  query[action] = true;
+
+  hooks.find(query).forEach(function(hook) {
     HTTP.post(hook.url, {
       data: {
         doc: doc,
@@ -35,6 +47,18 @@ var handleAction = function (doc, action, collectionName) {
           collection: collectionName,
           hookId: hook._id
         }
+      }
+    }, function (error, result) {
+      if(error || result.statusCode !== 200) {
+        if(hook.strikes && hook.strikes < 2) {
+          hooks.update({ _id: hook._id }, { $inc: { strikes: 1 } });
+        }
+        else {
+          hooks.remove(hook._id);
+        }
+      }
+      else if (hook.strikes) {
+        hooks.update({ _id: hook._id }, { $unset: { strikes: "" } });
       }
     });
   });
@@ -101,18 +125,38 @@ var generate = function (options) {
           data.collection + " is not initialized for webhooking");
       }
 
+      if(!data.actions) {
+        return generateError.call(this, "No actions were specified");
+      }
+
+      data.actions = data.actions.trim().toUpperCase();
+      var create = data.actions.indexOf("C") !== -1;
+      var update = data.actions.indexOf("U") !== -1;
+      var deleteAction = data.actions.indexOf("D") !== -1;
+
+      if(!(create || update || deleteAction)) {
+        return generateError.call(this, "The actions were invalid");
+      }
+
       var duplicate = hooks.findOne({
         collection: data.collection,
         url: data.url
       });
 
       if(duplicate) {
+        duplicate.create = create;
+        duplicate.update = update;
+        duplicate.delete = deleteAction;
+        hooks.update({ _id: duplicate._id }, duplicate);
         return JSON.stringify(duplicate);
       }
 
       var id = hooks.insert({
         collection: data.collection,
-        url: data.url
+        url: data.url,
+        create: create,
+        update: update,
+        delete: deleteAction
       });
 
       return JSON.stringify(hooks.findOne(id));
