@@ -1,7 +1,7 @@
 Package.describe({
   name: 'bjwiley2:webhook',
   summary: 'Quick and easy WebHook functionality for your Meteor project.',
-  version: '0.0.5',
+  version: '0.0.6',
   git: 'https://github.com/NewSpring/webhook.git'
 });
 
