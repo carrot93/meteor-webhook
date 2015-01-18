@@ -1,4 +1,4 @@
-if(Meteor.isClient) {
+if(!Meteor.isServer) {
   return;
 }
 
@@ -22,6 +22,29 @@ var methodDataToObject = function (data) {
   return obj;
 };
 
+var authenticateFromData = function (data) {
+  if(!(data && data.email && data.password)) {
+    return generateAuthenticationError.call(this);
+  }
+
+  result = serverSideLogin(data.email, data.password);
+
+  if(result.error || !result.user) {
+    return generateAuthenticationError.call(this);
+  }
+
+  return result.user;
+};
+
+var generateAuthenticationError = function () {
+  this.setStatusCode(401);
+  return {
+    success: false,
+    error: true,
+    message: "Invalid credentials"
+  };
+};
+
 var generateError = function (message) {
   this.setStatusCode(400);
   return JSON.stringify({
@@ -39,7 +62,7 @@ var handleAction = function (doc, action, collectionName, allowFunction) {
   query[action] = true;
 
   hooks.find(query).forEach(function(hook) {
-    if(allowFunction && !allowFunction(doc)) {
+    if(allowFunction && !allowFunction(doc, hook.userId)) {
       return;
     }
 
@@ -93,33 +116,73 @@ var init = function (collection, options) {
 };
 
 var generate = function (options) {
-  var collection, method;
-  method = {};
+  var method = {};
+  var authentication = false;
 
-  check(options, {
-    route: String
-  });
+  check(options, Object);
+  check(options.route, String);
+
+  if(options.authentication) {
+    authenticate = true;
+  }
 
   method[options.route] = {
     get: function () {
       this.setContentType("application/JSON");
-      return JSON.stringify(hooks.find().fetch());
+      var query = {};
+
+      if(authenticate) {
+        var data = this.requestHeaders;
+        var result = authenticateFromData.call(this, data);
+
+        if(result["error"]) {
+          return JSON.stringify(result);
+        }
+
+        query.userId = result._id;
+      }
+
+      var hookDocs = hooks.find(query).fetch();
+      return JSON.stringify(hookDocs);
     },
     delete: function (data) {
       this.setContentType("application/JSON");
       data = methodDataToObject(data);
+      var query = {};
+
+      if(authenticate) {
+        var result = authenticateFromData.call(this, data);
+
+        if(result.error) {
+          return JSON.stringify(result);
+        }
+
+        query.userId = result._id;
+      }
 
       if(!data._id) {
         return generateError.call(this, "No _id was specified");
       }
 
+      query._id = data._id;
+
       return JSON.stringify({
-        success: hooks.remove(data._id) === 1
+        success: hooks.remove(query) === 1
       });
     },
     post: function (data) {
       this.setContentType("application/JSON");
       data = methodDataToObject(data);
+
+      if(authenticate) {
+        var result = authenticateFromData.call(this, data);
+
+        if(result.error) {
+          return JSON.stringify(result);
+        }
+
+        var user = result;
+      }
 
       if(!data.url) {
         return generateError.call(this, "No url was specified");
@@ -147,10 +210,16 @@ var generate = function (options) {
         return generateError.call(this, "The actions were invalid");
       }
 
-      var duplicate = hooks.findOne({
+      var query = {
         collection: data.collection,
         url: data.url
-      });
+      };
+
+      if(authenticate) {
+        query.userId = user._id;
+      }
+
+      var duplicate = hooks.findOne(query);
 
       if(duplicate) {
         duplicate.create = create;
@@ -160,14 +229,11 @@ var generate = function (options) {
         return JSON.stringify(duplicate);
       }
 
-      var id = hooks.insert({
-        collection: data.collection,
-        url: data.url,
-        create: create,
-        update: update,
-        delete: deleteAction
-      });
+      query.create = create;
+      query.update = update;
+      query.delete = deleteAction;
 
+      var id = hooks.insert(query);
       return JSON.stringify(hooks.findOne(id));
     }
   };
