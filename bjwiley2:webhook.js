@@ -2,6 +2,7 @@ if(!Meteor.isServer) {
   return;
 }
 
+var extend = Npm.require("extend");
 var collections = {};
 var hooks = new Mongo.Collection("hooks");
 
@@ -22,36 +23,22 @@ var methodDataToObject = function (data) {
   return obj;
 };
 
-var authenticateFromData = function (data) {
-  if(!(data && data.email && data.password)) {
-    return generateAuthenticationError.call(this);
-  }
-
-  result = serverSideLogin(data.email, data.password);
-
-  if(result.error || !result.user) {
-    return generateAuthenticationError.call(this);
-  }
-
-  return result.user;
-};
-
 var generateAuthenticationError = function () {
   this.setStatusCode(401);
-  return {
-    success: false,
-    error: true,
-    message: "Invalid credentials"
-  };
+  return JSON.stringify(getErrorObject("Invalid credentials"));
 };
 
 var generateError = function (message) {
   this.setStatusCode(400);
-  return JSON.stringify({
+  return JSON.stringify(getErrorObject(message));
+};
+
+var getErrorObject = function (message) {
+  return {
     success: false,
     error: true,
     message: message
-  });
+  };
 };
 
 var handleAction = function (doc, action, collectionName, allowFunction) {
@@ -66,7 +53,7 @@ var handleAction = function (doc, action, collectionName, allowFunction) {
       return;
     }
 
-    HTTP.post(hook.url, {
+    options = {
       data: {
         doc: doc,
         info: {
@@ -75,7 +62,14 @@ var handleAction = function (doc, action, collectionName, allowFunction) {
           hookId: hook._id
         }
       }
-    }, function (error, result) {
+    };
+
+    if(hook.token && hook.tokenName) {
+      options.headers = {};
+      options.headers[hook.tokenName] = hook.token;
+    }
+
+    HTTP.post(hook.url, options, function (error, result) {
       if(error || result.statusCode !== 200) {
         if(hook.strikes && hook.strikes < 2) {
           hooks.update({ _id: hook._id }, { $inc: { strikes: 1 } });
@@ -96,7 +90,7 @@ var init = function (collection, options) {
   name = collection._name;
 
   if (collections[name]) {
-    throw new Meteor.Error("already initialized",
+    throw new Meteor.Error("already-initialized",
       name + " is already initialized");
   }
 
@@ -116,31 +110,37 @@ var init = function (collection, options) {
 };
 
 var generate = function (options) {
+  var defaults = {
+    route: "/webhooks",
+    authentication: function () { return false; }
+  };
+
+  var settings = extend( {}, defaults, options );
+
+  check(settings, {
+    route: String,
+    authentication: Function
+  });
+
   var method = {};
-  var authentication = false;
 
-  check(options, Object);
-  check(options.route, String);
-
-  if(options.authentication) {
-    authenticate = true;
-  }
-
-  method[options.route] = {
+  method[settings.route] = {
     get: function () {
       this.setContentType("application/JSON");
       var query = {};
+      var result = settings.authentication(this.requestHeaders);
 
-      if(authenticate) {
-        var data = this.requestHeaders;
-        var result = authenticateFromData.call(this, data);
-
-        if(result["error"]) {
-          return JSON.stringify(result);
-        }
-
-        query.userId = result._id;
+      if(!result) {
+        return generateAuthenticationError.call(this);
       }
+
+      var user = Meteor.users.findOne(result);
+
+      if(!user) {
+        return generateAuthenticationError.call(this);
+      }
+
+      query.userId = user._id;
 
       var hookDocs = hooks.find(query).fetch();
       return JSON.stringify(hookDocs);
@@ -149,16 +149,19 @@ var generate = function (options) {
       this.setContentType("application/JSON");
       data = methodDataToObject(data);
       var query = {};
+      var result = settings.authentication(this.requestHeaders);
 
-      if(authenticate) {
-        var result = authenticateFromData.call(this, data);
-
-        if(result.error) {
-          return JSON.stringify(result);
-        }
-
-        query.userId = result._id;
+      if(!result) {
+        return generateAuthenticationError.call(this);
       }
+
+      var user = Meteor.users.findOne(result);
+
+      if(!user) {
+        return generateAuthenticationError.call(this);
+      }
+
+      query.userId = user._id;
 
       if(!data._id) {
         return generateError.call(this, "No _id was specified");
@@ -173,15 +176,16 @@ var generate = function (options) {
     post: function (data) {
       this.setContentType("application/JSON");
       data = methodDataToObject(data);
+      var result = settings.authentication(this.requestHeaders);
 
-      if(authenticate) {
-        var result = authenticateFromData.call(this, data);
+      if(!result) {
+        return generateAuthenticationError.call(this);
+      }
 
-        if(result.error) {
-          return JSON.stringify(result);
-        }
+      var user = Meteor.users.findOne(result);
 
-        var user = result;
+      if(!user) {
+        return generateAuthenticationError.call(this);
       }
 
       if(!data.url) {
@@ -215,10 +219,7 @@ var generate = function (options) {
         url: data.url
       };
 
-      if(authenticate) {
-        query.userId = user._id;
-      }
-
+      query.userId = user._id;
       var duplicate = hooks.findOne(query);
 
       if(duplicate) {
@@ -232,6 +233,11 @@ var generate = function (options) {
       query.create = create;
       query.update = update;
       query.delete = deleteAction;
+
+      if(data.tokenName && data.token) {
+        query.tokenName = data.tokenName
+        query.token = data.token
+      }
 
       var id = hooks.insert(query);
       return JSON.stringify(hooks.findOne(id));

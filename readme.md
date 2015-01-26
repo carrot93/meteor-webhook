@@ -26,7 +26,9 @@ Now create the WebHook registration API:
   if Meteor.isServer
     WebHook.generate
       route: "/api/v1/webhooks"
-      authentication: true
+      authentication: (requestHeaders) ->
+        # Check an API token within the request header
+        # Return subscriberUserId or falsy
   ````
 
 From a rest client, POST the following data to
@@ -35,19 +37,18 @@ http://localhost:3000/api/v1/webhooks:
 * url: "http://your/url"
 * collection: "people"
 * actions: "CUD"
-* email: "somebody@somewhere.com"
-* password: "supersecret"
+* [optional] tokenName: ".access-token"
+* [optional] token: "ERGERGWEFWEGWRHRTJRTWFCWWERG"
 
 Your URL will now be stored and anytime data is created (C), updated (U), or
 deleted (D) in people, a notification of that modification will be sent to
-http://your/url.
+http://your/url. If you specify a token and tokenName, that token will be
+included in the notification's header as a way to authenticate to the recipient
+server.
 
 WebHook subscriptions do not expire.  However, after three consecutive failed
 attempts to send notifications to a url, the WebHook is removed.  A failure is
 anything besides a 200 response code (such as a 404).
-
-An account must have already been created for somebody@somewhere.com using the
-accounts-password package (https://atmospherejs.com/meteor/accounts-password).
 
 # API
 
@@ -71,9 +72,8 @@ accounts-password package (https://atmospherejs.com/meteor/accounts-password).
   ````
 
   *options*: An object. Currently the only valid options are a string value for
-  route and a boolean value for authentication. The route is the URL where
+  route and a function for authentication. The route is the URL where
   subscribers can manage their WebHook subscriptions. GET will retrieve all of
   the subscriptions. POST allows creating subscriptions. DELETE removes a
-  subscription. If authentication is true, then every API request will require
-  a plain-text email and password. SSL is important because of this plain-text
-  nature of credential passing.
+  subscription. The authentication function is called with the request headers
+  object. You can then return a userId or a falsy value to generate a 401.
