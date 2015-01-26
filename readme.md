@@ -31,6 +31,22 @@ Now create the WebHook registration API:
         # Return subscriberUserId or falsy
   ````
 
+If you are using bjwiley2:api-tokens, your authentication callback would look
+like this:
+
+  ````coffeescript
+  if Meteor.isServer
+    authFunction = (requestHeaders) ->
+      token = requestHeaders[".token"]
+      decodedData = apiToken.decode(token, "SECRET-KEY")
+      return false  if not decodedData
+      return decodedData.userId
+
+    WebHook.generate
+      route: "/api/v1/webhooks"
+      authentication: authFunction
+  ````
+
 From a rest client, POST the following data to
 http://localhost:3000/api/v1/webhooks:
 
