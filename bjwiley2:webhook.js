@@ -6,23 +6,6 @@ var extend = Npm.require("extend");
 var collections = {};
 var hooks = new Mongo.Collection("hooks");
 
-var methodDataToObject = function (data) {
-  var obj = {};
-
-  if(!data) {
-    return obj;
-  }
-
-  data.toString().split("&").forEach(function (n) {
-    var keyValue = n.split("=");
-    var key = keyValue[0];
-    var value = keyValue[1];
-    obj[key] = decodeURIComponent(value);
-  });
-
-  return obj;
-};
-
 var generateAuthenticationError = function () {
   this.setStatusCode(401);
   return JSON.stringify(getErrorObject("Invalid credentials"));
@@ -147,7 +130,7 @@ var generate = function (options) {
     },
     delete: function (data) {
       this.setContentType("application/JSON");
-      data = methodDataToObject(data);
+      data = parseRequestData(data, this.requestHeaders["content-type"]);
       var query = {};
       var result = settings.authentication(this.requestHeaders);
 
@@ -175,7 +158,7 @@ var generate = function (options) {
     },
     post: function (data) {
       this.setContentType("application/JSON");
-      data = methodDataToObject(data);
+      data = parseRequestData(data, this.requestHeaders["content-type"]);
       var result = settings.authentication(this.requestHeaders);
 
       if(!result) {
