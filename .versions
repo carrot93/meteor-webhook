@@ -2,8 +2,8 @@ application-configuration@1.0.4
 autoupdate@1.1.5
 base64@1.0.2
 binary-heap@1.0.2
-bjwiley2:request-data@0.0.1
-bjwiley2:webhook@0.0.10
+bjwiley2:request-data@0.0.2
+bjwiley2:webhook@0.0.11
 blaze@2.0.4
 blaze-tools@1.0.2
 boilerplate-generator@1.0.2
@@ -24,7 +24,7 @@ jquery@1.11.3
 json@1.0.2
 launch-screen@1.0.1
 livedata@1.0.12
-local-test:bjwiley2:webhook@0.0.10
+local-test:bjwiley2:webhook@0.0.11
 logging@1.0.6
 matb33:collection-hooks@0.7.7
 meteor@1.1.4
